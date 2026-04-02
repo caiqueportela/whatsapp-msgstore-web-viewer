@@ -1,82 +1,116 @@
 # WA Viewer Pro Desktop
 
-Aplicativo desktop (Electron) para abrir e consultar `msgstore.db` do WhatsApp com backend local.
+Aplicativo desktop em Electron para abrir e navegar mensagens de `msgstore.db` localmente, com backend HTTP interno para consulta.
 
-## O que mudou
+## Arquitetura
 
-- Migração de app web puro para app desktop Electron.
-- Backend local em Node.js (dentro do Electron) com API HTTP para consultas.
-- Remoção do suporte a arquivos criptografados (`.crypt12`, `.crypt14`, `.crypt15`).
-- Paginação de mensagens com scroll infinito (carrega mais ao rolar para cima).
-- Busca de mensagens dentro da conversa.
-- Tentativa de resolução de nome de contato e remetente de grupos (via tabelas `jid` e `wa_contacts`).
-- Tentativa de exibição de mídias quando houver referência no banco e arquivo físico acessível.
+- Renderer: React + Vite (sem acesso direto ao SQLite).
+- Backend local: Node.js/Express dentro do processo desktop.
+- Banco: acessado somente no backend via `better-sqlite3`.
+- IPC: seleção de arquivos/pastas exposta pelo preload do Electron.
+
+## Principais recursos
+
+- Abertura de banco por seletor de arquivo ou drag-and-drop de `msgstore.db`.
+- Seleção opcional de pasta de mídias.
+- Lista de conversas com busca.
+- Chat com paginação e scroll infinito ao subir.
+- Busca de mensagens por conversa.
+- Exibição de mídia quando o arquivo existe em raiz permitida.
+- Resolução de nomes usando estrutura disponível no banco (`wa_contacts`, `jid_map`, `lid_display_name`, etc.).
 
 ## Requisitos
 
 - Node.js 20+
 - npm 10+
 
-## Executando em desenvolvimento
+## Desenvolvimento
 
 ```bash
 npm install
 npm run dev
 ```
 
-Isso sobe:
+O comando inicia:
 
 - Frontend Vite em `http://localhost:5173`
-- Janela Electron apontando para esse frontend
-- Backend local (porta dinâmica em localhost)
+- Janela Electron
+- Backend local em porta dinâmica (localhost)
 
-## Build de executáveis
+## Testes
 
-Build padrão no Linux (gera AppImage e .deb):
+```bash
+npm run test
+```
+
+Comandos adicionais:
+
+```bash
+npm run test:watch
+npm run test:coverage
+```
+
+## Build
+
+Build padrão (plataforma atual):
 
 ```bash
 npm run build
 ```
 
-Artefatos em `release/`.
-
-Para gerar instalador Windows (`.exe`/NSIS), execute em um ambiente Windows:
+Build Linux:
 
 ```bash
-npm run build -- --win
+npm run build:linux
 ```
 
-Para Linux:
+Build Windows (em runner/ambiente Windows):
 
 ```bash
-npm run build -- --linux
+npm run build:win
 ```
+
+Artefatos são gerados em `release/`.
+
+## Release no GitHub
+
+Workflow: `.github/workflows/release.yml`
+
+- Executa testes.
+- Gera artefatos Linux e Windows.
+- Publica release com anexos.
+
+Disparo automático por tag:
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+Também pode ser executado manualmente via `workflow_dispatch`.
 
 ## Uso no app
 
-1. Clique em "Selecionar msgstore.db".
-2. (Opcional) Clique em "Selecionar pasta de mídias" e escolha a pasta que contém diretórios como `WhatsApp Images`, `WhatsApp Video`, etc.
-3. Selecione uma conversa.
+1. Arraste `msgstore.db` na tela inicial ou clique em selecionar arquivo.
+2. Opcionalmente selecione a pasta de mídias (`WhatsApp Images`, `WhatsApp Video` etc.).
+3. Escolha uma conversa.
 4. Role para cima para carregar mensagens antigas.
-5. Use a busca no topo do chat para filtrar mensagens daquela conversa.
+5. Use busca na conversa para filtrar mensagens.
 
-## Limitações atuais
+## Limitações
 
-- Apenas bancos SQLite não criptografados.
-- Nomes de contato/remetente dependem da estrutura e qualidade de dados em `wa_contacts`.
-- Exibição de mídia depende de correspondência entre caminhos da tabela e arquivos no disco.
+- Suporte apenas a bancos SQLite não criptografados.
+- Exibição de mídia depende da existência física do arquivo e de caminho resolvível.
 
-## Como extrair estrutura de um DB grande (ex.: 500MB)
+## Introspecção de DB grande
 
-Para analisar schema e amostras de tabelas, rode:
+Para extrair schema e metadados de tabelas de um banco grande:
 
 ```bash
 node scripts/export-db-introspection.cjs "/caminho/msgstore.db" "./introspection-output"
 ```
 
-Arquivos gerados:
+Saída esperada:
 
 - `introspection-output/schema.sql`
 - `introspection-output/tables.json`
-
-Com isso é possível mapear melhor tabelas extras do seu dump real e melhorar consultas (nomes, mídia, status, etc.).

@@ -79,15 +79,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const messageGroups = groupMessagesByDate(messages);
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-[#efeae2] relative w-full min-w-0">
+    <div className="chat-bg-pattern flex-1 flex flex-col h-full relative w-full min-w-0">
       {/* Background Pattern */}
-      <div 
-        className="absolute inset-0 opacity-40 pointer-events-none"
-        style={{
-            backgroundImage: `url("https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png")`,
-            backgroundRepeat: 'repeat'
-        }}
-      />
+      <div className="absolute inset-0 opacity-20 pointer-events-none" />
 
       {/* Header */}
       <div className="bg-[#f0f2f5] px-4 py-3 flex items-center justify-between border-b border-gray-300 z-10 shadow-sm sticky top-0 w-full">

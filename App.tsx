@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ConversationList } from './components/ConversationList';
 import { ChatWindow } from './components/ChatWindow';
+import { FileLoaderScreen } from './components/FileLoaderScreen';
 import { Conversation, Message } from './types';
-import { Database, Upload, AlertCircle, Folder, RefreshCw } from 'lucide-react';
+import { Database, Folder, RefreshCw } from 'lucide-react';
 import {
   getConversations,
   getMediaUrl,
@@ -104,13 +105,7 @@ const App: React.FC = () => {
     }
   };
 
-  const handleOpenDatabase = async () => {
-    setError(null);
-    const selectedDbPath = await selectDbFile();
-    if (!selectedDbPath) {
-      return;
-    }
-
+  const openDatabaseFromPath = async (selectedDbPath: string) => {
     try {
       await openDatabase(selectedDbPath, mediaRootPath);
       setDbPath(selectedDbPath);
@@ -122,6 +117,16 @@ const App: React.FC = () => {
       setError(err.message || 'Não foi possível abrir o banco selecionado.');
       setDbLoaded(false);
     }
+  };
+
+  const handleOpenDatabase = async () => {
+    setError(null);
+    const selectedDbPath = await selectDbFile();
+    if (!selectedDbPath) {
+      return;
+    }
+
+    await openDatabaseFromPath(selectedDbPath);
   };
 
   const handleSelectMediaFolder = async () => {
@@ -173,48 +178,13 @@ const App: React.FC = () => {
 
   if (!dbLoaded) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-green-500 to-teal-600 flex items-center justify-center p-4">
-        <div className="bg-white rounded-xl shadow-2xl p-8 max-w-lg w-full text-center">
-          <div className="bg-green-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 text-green-600">
-            <Database size={40} />
-          </div>
-          <h1 className="text-2xl font-bold text-gray-800 mb-2">WhatsApp DB Viewer</h1>
-          <p className="text-gray-500 mb-8">
-            Abra o seu arquivo <code>msgstore.db</code> para visualizar conversas e mensagens.
-            <br /><span className="text-xs text-gray-400 mt-2 block">Processamento local no app desktop.</span>
-          </p>
-
-          <button
-            onClick={handleOpenDatabase}
-            className="block w-full cursor-pointer group"
-          >
-            <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 hover:border-green-500 hover:bg-green-50 transition-all flex flex-col items-center">
-              <Upload size={32} className="text-gray-400 group-hover:text-green-500 mb-2" />
-              <span className="text-sm font-medium text-gray-600 group-hover:text-green-600">
-                Selecionar msgstore.db
-              </span>
-            </div>
-          </button>
-
-          <div className="mt-4">
-            <button
-              onClick={handleSelectMediaFolder}
-              className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-800"
-            >
-              <Folder size={16} />
-              Selecionar pasta de mídias (opcional)
-            </button>
-            {mediaRootPath && <p className="text-xs text-gray-500 mt-2 break-all">{mediaRootPath}</p>}
-          </div>
-
-          {error && (
-            <div className="mt-6 p-4 bg-red-50 text-red-700 rounded-lg flex items-start text-left text-sm border border-red-200">
-              <AlertCircle size={20} className="mr-2 flex-shrink-0 mt-0.5" />
-              {error}
-            </div>
-          )}
-        </div>
-      </div >
+      <FileLoaderScreen
+        error={error}
+        mediaRootPath={mediaRootPath}
+        onSelectMediaFolder={handleSelectMediaFolder}
+        onDropFilePath={openDatabaseFromPath}
+        onBrowseFile={handleOpenDatabase}
+      />
     );
   }
 

@@ -87,6 +87,7 @@ export const getMessages = async (
   offset: number,
   search: string
 ): Promise<{ data: Message[]; total: number }> => {
+  const baseUrl = await getBaseUrl();
   const params = new URLSearchParams({
     chatId: String(chatId),
     limit: String(limit),
@@ -94,7 +95,14 @@ export const getMessages = async (
     search,
   });
 
-  return apiFetch(`/api/messages?${params.toString()}`);
+  const result = await apiFetch<{ data: Message[]; total: number }>(`/api/messages?${params.toString()}`);
+  return {
+    ...result,
+    data: result.data.map((msg) => ({
+      ...msg,
+      media_url: msg.media_url ? `${baseUrl}${msg.media_url}` : msg.media_url,
+    })),
+  };
 };
 
 export const getMediaUrl = async (relativeUrl: string): Promise<string> => {

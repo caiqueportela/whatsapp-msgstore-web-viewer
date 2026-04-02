@@ -36,8 +36,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
 
         {/* Quoted Message */}
         {message.quoted_text && (
-          <div className={`mb-1 p-2 rounded bg-opacity-30 text-xs border-l-4 w-full overflow-hidden ${
-              isSent ? 'bg-green-800 border-green-600 text-green-900' : 'bg-gray-200 border-gray-400 text-gray-700'
+          <div className={`mb-1 p-2 rounded text-xs border-l-4 w-full overflow-hidden ${
+              isSent ? 'bg-green-100 border-green-500 text-gray-700' : 'bg-gray-100 border-gray-400 text-gray-700'
           }`}>
              <span className="font-bold block mb-0.5 opacity-80">Quoted</span>
              <div className="whitespace-pre-wrap break-words line-clamp-4 min-w-0 w-full" style={{ wordBreak: 'break-word' }}>

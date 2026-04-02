@@ -126,7 +126,7 @@ class ArchiveStore {
       this.schema.hasTable('lid_display_name') ? "NULLIF(lid_name.display_name, '')" : 'NULL',
       this.schema.hasTable('lid_display_name') ? "NULLIF(lid_name.username, '')" : 'NULL',
       "NULLIF(chat.subject, '')",
-      jidValue,
+      'jid.user',
     ].join(', ');
 
     return {
@@ -231,6 +231,17 @@ class ArchiveStore {
         joins.push('LEFT JOIN jid_map sender_jm ON sender_jm.jid_row_id = sender_jid._id');
         joins.push('LEFT JOIN lid_display_name sender_lid ON sender_lid.lid_row_id = sender_jm.lid_row_id');
       }
+
+      // Chat contact fallback: for 1:1 received messages where sender_jid_row_id IS NULL
+      joins.push('LEFT JOIN chat msg_chat ON msg_chat._id = message.chat_row_id');
+      joins.push('LEFT JOIN jid chat_contact_jid ON chat_contact_jid._id = msg_chat.jid_row_id');
+      if (this.schema.hasTable('lid_display_name')) {
+        joins.push('LEFT JOIN lid_display_name chat_contact_lid_direct ON chat_contact_lid_direct.lid_row_id = msg_chat.jid_row_id');
+      }
+      if (this.schema.hasTable('jid_map') && this.schema.hasTable('lid_display_name')) {
+        joins.push('LEFT JOIN jid_map chat_jm ON chat_jm.jid_row_id = chat_contact_jid._id');
+        joins.push('LEFT JOIN lid_display_name chat_contact_lid_map ON chat_contact_lid_map.lid_row_id = chat_jm.lid_row_id');
+      }
     }
 
     const senderNameExpr = hasSenderJid
@@ -242,9 +253,11 @@ class ArchiveStore {
           ${this.schema.hasTable('lid_display_name') ? "NULLIF(sender_lid_direct.username, '')" : 'NULL'},
           ${this.schema.hasTable('lid_display_name') ? "NULLIF(sender_lid.display_name, '')" : 'NULL'},
           ${this.schema.hasTable('lid_display_name') ? "NULLIF(sender_lid.username, '')" : 'NULL'},
-          sender_jid.user,
-          sender_jid.raw_string,
-          'Desconhecido'
+          NULLIF(sender_jid.user, ''),
+          NULLIF(sender_jid.raw_string, ''),
+          ${this.schema.hasTable('lid_display_name') ? "NULLIF(chat_contact_lid_direct.display_name, '')" : 'NULL'},
+          ${this.schema.hasTable('lid_display_name') ? "NULLIF(chat_contact_lid_map.display_name, '')" : 'NULL'},
+          NULLIF(chat_contact_jid.user, '')
         )`
       : 'NULL';
 

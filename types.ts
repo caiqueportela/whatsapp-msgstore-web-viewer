@@ -18,6 +18,7 @@ export interface Message {
   media_path?: string | null;
   media_mime_type?: string | null;
   media_url?: string | null;
+  media_thumbnail_url?: string | null;
   media_type?: string;
 }
 

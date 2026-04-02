@@ -200,6 +200,7 @@ class ArchiveStore {
     const hasSenderJid = this.schema.hasColumn('message', 'sender_jid_row_id');
     const hasMessageMedia = this.schema.hasTable('message_media');
     const hasAddonMedia = this.schema.hasTable('addon_message_media');
+    const hasMessageThumbnail = this.schema.hasTable('message_thumbnail') && this.schema.hasColumn('message_thumbnail', 'thumbnail');
     const hasQuoted = this.schema.hasTable('message_quoted');
 
     const joins = [];
@@ -210,6 +211,10 @@ class ArchiveStore {
 
     if (hasAddonMedia) {
       joins.push('LEFT JOIN addon_message_media amm ON amm.message_row_id = message._id AND amm.addon_message_index = 0');
+    }
+
+    if (hasMessageThumbnail) {
+      joins.push('LEFT JOIN message_thumbnail mt ON mt.message_row_id = message._id');
     }
 
     if (hasSenderJid) {
@@ -230,6 +235,10 @@ class ArchiveStore {
         // Indirect match: sender is a regular JID, resolve via jid_map
         joins.push('LEFT JOIN jid_map sender_jm ON sender_jm.jid_row_id = sender_jid._id');
         joins.push('LEFT JOIN lid_display_name sender_lid ON sender_lid.lid_row_id = sender_jm.lid_row_id');
+
+        // Reverse mapping: sender_jid can be LID; map it back to regular phone JID
+        joins.push('LEFT JOIN jid_map sender_jm_from_lid ON sender_jm_from_lid.lid_row_id = sender_jid._id');
+        joins.push('LEFT JOIN jid sender_mapped_jid ON sender_mapped_jid._id = sender_jm_from_lid.jid_row_id');
       }
 
       // Chat contact fallback: for 1:1 received messages where sender_jid_row_id IS NULL
@@ -250,9 +259,8 @@ class ArchiveStore {
           ${this.schema.hasTable('wa_contacts') ? "NULLIF(sender_contact.given_name, '')" : 'NULL'},
           ${this.schema.hasTable('wa_contacts') ? "NULLIF(sender_contact.wa_name, '')" : 'NULL'},
           ${this.schema.hasTable('lid_display_name') ? "NULLIF(sender_lid_direct.display_name, '')" : 'NULL'},
-          ${this.schema.hasTable('lid_display_name') ? "NULLIF(sender_lid_direct.username, '')" : 'NULL'},
           ${this.schema.hasTable('lid_display_name') ? "NULLIF(sender_lid.display_name, '')" : 'NULL'},
-          ${this.schema.hasTable('lid_display_name') ? "NULLIF(sender_lid.username, '')" : 'NULL'},
+          ${this.schema.hasTable('jid_map') ? "NULLIF(sender_mapped_jid.user, '')" : 'NULL'},
           NULLIF(sender_jid.user, ''),
           NULLIF(sender_jid.raw_string, ''),
           ${this.schema.hasTable('lid_display_name') ? "NULLIF(chat_contact_lid_direct.display_name, '')" : 'NULL'},
@@ -276,6 +284,10 @@ class ArchiveStore {
       ? `COALESCE(${mediaNameParts.join(', ')})`
       : mediaNameParts[0] ?? 'NULL';
 
+    const thumbnailExpr = hasMessageThumbnail
+      ? 'mt.thumbnail'
+      : (hasAddonMedia && this.schema.hasColumn('addon_message_media', 'thumbnail') ? 'amm.thumbnail' : 'NULL');
+
     const quotedExpr = hasQuoted
       ? '(SELECT text_data FROM message_quoted WHERE message_quoted.message_row_id = message._id LIMIT 1)'
       : 'NULL';
@@ -286,9 +298,50 @@ class ArchiveStore {
       mediaFilePathExpr,
       mediaMimeTypeExpr,
       mediaNameExpr,
+      thumbnailExpr,
       quotedExpr,
       orderColumn: hasSortId ? 'message.sort_id' : 'message._id',
     };
+  }
+
+  buildThumbnailDataUrl(thumbnailBlob, mediaMimeType) {
+    if (!thumbnailBlob) return null;
+
+    let buffer;
+    if (Buffer.isBuffer(thumbnailBlob)) {
+      buffer = thumbnailBlob;
+    } else if (thumbnailBlob instanceof Uint8Array) {
+      buffer = Buffer.from(thumbnailBlob);
+    } else {
+      return null;
+    }
+
+    const mimeType = typeof mediaMimeType === 'string' && mediaMimeType.startsWith('image/')
+      ? mediaMimeType
+      : 'image/jpeg';
+    return `data:${mimeType};base64,${buffer.toString('base64')}`;
+  }
+
+  buildMediaCandidates(candidate) {
+    const raw = String(candidate || '').trim();
+    if (!raw) return [];
+
+    const normalized = raw.replace(/\\/g, '/').replace(/^\.\/+/, '');
+    const variants = new Set([raw, normalized]);
+
+    if (normalized.startsWith('Media/')) {
+      variants.add(normalized.slice('Media/'.length));
+    }
+
+    if (normalized.startsWith('/Media/')) {
+      variants.add(normalized.slice('/Media/'.length));
+    }
+
+    if (!normalized.startsWith('Media/') && !normalized.startsWith('/Media/')) {
+      variants.add(`Media/${normalized}`);
+    }
+
+    return [...variants].filter(Boolean);
   }
 
   resolveMediaFile(row) {
@@ -304,9 +357,12 @@ class ArchiveStore {
       }
 
       for (const root of allowedRoots) {
-        const resolved = path.resolve(root, candidate);
-        if (fs.existsSync(resolved)) {
-          return resolved;
+        const candidateVariants = this.buildMediaCandidates(candidate);
+        for (const variant of candidateVariants) {
+          const resolved = path.resolve(root, variant);
+          if (fs.existsSync(resolved)) {
+            return resolved;
+          }
         }
       }
     }
@@ -337,7 +393,8 @@ class ArchiveStore {
         ${parts.senderNameExpr} AS sender_name,
         ${parts.mediaFilePathExpr} AS media_file_path,
         ${parts.mediaMimeTypeExpr} AS media_mime_type,
-        ${parts.mediaNameExpr} AS media_name
+        ${parts.mediaNameExpr} AS media_name,
+        ${parts.thumbnailExpr} AS media_thumbnail
       FROM message
       ${parts.joins}
       WHERE message.chat_row_id = ?
@@ -359,6 +416,7 @@ class ArchiveStore {
     const mapped = rows
       .map((row) => {
         const mediaPath = this.resolveMediaFile(row);
+        const mediaThumbnailUrl = this.buildThumbnailDataUrl(row.media_thumbnail, row.media_mime_type);
         return {
           _id: row._id,
           from_me: row.from_me === 1,
@@ -366,10 +424,11 @@ class ArchiveStore {
           timestamp: row.timestamp,
           quoted_text: row.quoted_text,
           sender_name: row.sender_name,
-          has_media: Boolean(mediaPath),
+          has_media: Boolean(mediaPath || mediaThumbnailUrl),
           media_path: mediaPath,
           media_mime_type: row.media_mime_type || null,
           media_url: mediaPath ? `/api/media?path=${encodeURIComponent(mediaPath)}` : null,
+          media_thumbnail_url: mediaThumbnailUrl,
         };
       })
       .reverse();

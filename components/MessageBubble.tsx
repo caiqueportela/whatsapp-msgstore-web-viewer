@@ -15,6 +15,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
 
   const isImage = message.media_mime_type?.startsWith('image/');
   const isVideo = message.media_mime_type?.startsWith('video/');
+  const mediaPreviewUrl = message.media_url || message.media_thumbnail_url;
 
   return (
     <div className={`flex flex-col ${isSent ? 'items-end' : 'items-start'} mb-2 group w-full`}>
@@ -64,30 +65,53 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
           )}
         </div>
 
-        {message.media_url && (
+        {mediaPreviewUrl && (
           <div className="mt-2 px-1">
             {isImage ? (
-              <a href={message.media_url} target="_blank" rel="noreferrer">
+              message.media_url ? (
+                <a href={message.media_url} target="_blank" rel="noreferrer">
+                  <img
+                    src={mediaPreviewUrl}
+                    alt="Mídia"
+                    className="rounded-lg max-h-72 object-cover border border-black/10"
+                  />
+                </a>
+              ) : (
                 <img
-                  src={message.media_url}
-                  alt="Mídia"
+                  src={mediaPreviewUrl}
+                  alt="Thumbnail"
                   className="rounded-lg max-h-72 object-cover border border-black/10"
                 />
-              </a>
+              )
             ) : isVideo ? (
-              <video controls className="rounded-lg max-h-72 border border-black/10 bg-black/80">
-                <source src={message.media_url} type={message.media_mime_type || undefined} />
-              </video>
+              message.media_url ? (
+                <video controls className="rounded-lg max-h-72 border border-black/10 bg-black/80">
+                  <source src={message.media_url} type={message.media_mime_type || undefined} />
+                </video>
+              ) : (
+                <img
+                  src={mediaPreviewUrl}
+                  alt="Thumbnail do vídeo"
+                  className="rounded-lg max-h-72 object-cover border border-black/10"
+                />
+              )
             ) : (
-              <a
-                href={message.media_url}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-2 text-xs text-blue-700 hover:underline"
-              >
-                <File size={14} />
-                Abrir arquivo
-              </a>
+              message.media_url ? (
+                <a
+                  href={message.media_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-2 text-xs text-blue-700 hover:underline"
+                >
+                  <File size={14} />
+                  Abrir arquivo
+                </a>
+              ) : (
+                <span className="inline-flex items-center gap-2 text-xs text-gray-600">
+                  <File size={14} />
+                  Thumbnail disponível
+                </span>
+              )
             )}
           </div>
         )}

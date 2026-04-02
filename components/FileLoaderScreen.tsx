@@ -7,6 +7,7 @@ interface FileLoaderScreenProps {
   mediaRootPath: string | null;
   onSelectMediaFolder: () => Promise<void>;
   onDropFilePath: (filePath: string) => Promise<void>;
+  onDropError: (message: string) => void;
   onBrowseFile: () => Promise<void>;
 }
 
@@ -15,6 +16,7 @@ export const FileLoaderScreen: React.FC<FileLoaderScreenProps> = ({
   mediaRootPath,
   onSelectMediaFolder,
   onDropFilePath,
+  onDropError,
   onBrowseFile,
 }) => {
   return (
@@ -31,7 +33,7 @@ export const FileLoaderScreen: React.FC<FileLoaderScreenProps> = ({
           </p>
 
           <div className="mt-6">
-            <DatabaseDropZone onFilePath={onDropFilePath} onBrowse={onBrowseFile} />
+            <DatabaseDropZone onFilePath={onDropFilePath} onBrowse={onBrowseFile} onDropError={onDropError} />
           </div>
 
           <div className="mt-4 text-center">

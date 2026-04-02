@@ -183,6 +183,7 @@ const App: React.FC = () => {
         mediaRootPath={mediaRootPath}
         onSelectMediaFolder={handleSelectMediaFolder}
         onDropFilePath={openDatabaseFromPath}
+        onDropError={setError}
         onBrowseFile={handleOpenDatabase}
       />
     );

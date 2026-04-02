@@ -106,7 +106,13 @@ class ArchiveStore {
       );
     }
 
+    if (this.schema.hasTable('lid_display_name')) {
+      // Direct match: chat.jid_row_id is itself a LID (modern WhatsApp backups)
+      joins.push('LEFT JOIN lid_display_name lid_direct ON lid_direct.lid_row_id = chat.jid_row_id');
+    }
+
     if (this.schema.hasTable('jid_map') && this.schema.hasTable('lid_display_name')) {
+      // Indirect match: chat.jid_row_id is a regular JID, resolve via jid_map
       joins.push('LEFT JOIN jid_map jm ON jm.jid_row_id = jid._id');
       joins.push('LEFT JOIN lid_display_name lid_name ON lid_name.lid_row_id = jm.lid_row_id');
     }
@@ -115,8 +121,11 @@ class ArchiveStore {
       this.schema.hasTable('wa_contacts') ? "NULLIF(contact.display_name, '')" : 'NULL',
       this.schema.hasTable('wa_contacts') ? "NULLIF(contact.given_name, '')" : 'NULL',
       this.schema.hasTable('wa_contacts') ? "NULLIF(contact.wa_name, '')" : 'NULL',
+      this.schema.hasTable('lid_display_name') ? "NULLIF(lid_direct.display_name, '')" : 'NULL',
+      this.schema.hasTable('lid_display_name') ? "NULLIF(lid_direct.username, '')" : 'NULL',
       this.schema.hasTable('lid_display_name') ? "NULLIF(lid_name.display_name, '')" : 'NULL',
       this.schema.hasTable('lid_display_name') ? "NULLIF(lid_name.username, '')" : 'NULL',
+      "NULLIF(chat.subject, '')",
       jidValue,
     ].join(', ');
 
@@ -206,6 +215,11 @@ class ArchiveStore {
     if (hasSenderJid) {
       joins.push('LEFT JOIN jid sender_jid ON message.sender_jid_row_id = sender_jid._id');
 
+      if (this.schema.hasTable('lid_display_name')) {
+        // Direct match: sender_jid_row_id is itself a LID (modern WhatsApp backups)
+        joins.push('LEFT JOIN lid_display_name sender_lid_direct ON sender_lid_direct.lid_row_id = sender_jid._id');
+      }
+
       if (this.schema.hasTable('wa_contacts')) {
         joins.push(
           "LEFT JOIN wa_contacts sender_contact ON sender_contact.jid = COALESCE(sender_jid.raw_string, sender_jid.user || '@s.whatsapp.net')"
@@ -213,6 +227,7 @@ class ArchiveStore {
       }
 
       if (this.schema.hasTable('jid_map') && this.schema.hasTable('lid_display_name')) {
+        // Indirect match: sender is a regular JID, resolve via jid_map
         joins.push('LEFT JOIN jid_map sender_jm ON sender_jm.jid_row_id = sender_jid._id');
         joins.push('LEFT JOIN lid_display_name sender_lid ON sender_lid.lid_row_id = sender_jm.lid_row_id');
       }
@@ -223,6 +238,8 @@ class ArchiveStore {
           ${this.schema.hasTable('wa_contacts') ? "NULLIF(sender_contact.display_name, '')" : 'NULL'},
           ${this.schema.hasTable('wa_contacts') ? "NULLIF(sender_contact.given_name, '')" : 'NULL'},
           ${this.schema.hasTable('wa_contacts') ? "NULLIF(sender_contact.wa_name, '')" : 'NULL'},
+          ${this.schema.hasTable('lid_display_name') ? "NULLIF(sender_lid_direct.display_name, '')" : 'NULL'},
+          ${this.schema.hasTable('lid_display_name') ? "NULLIF(sender_lid_direct.username, '')" : 'NULL'},
           ${this.schema.hasTable('lid_display_name') ? "NULLIF(sender_lid.display_name, '')" : 'NULL'},
           ${this.schema.hasTable('lid_display_name') ? "NULLIF(sender_lid.username, '')" : 'NULL'},
           sender_jid.user,
@@ -239,9 +256,12 @@ class ArchiveStore {
       ? `COALESCE(${hasMessageMedia ? 'mm.mime_type' : 'NULL'}, ${hasAddonMedia ? 'amm.mime_type' : 'NULL'})`
       : 'NULL';
 
-    const mediaNameExpr = hasMessageMedia || hasAddonMedia
-      ? `COALESCE(${hasMessageMedia ? 'mm.media_name' : 'NULL'}, ${hasAddonMedia ? 'amm.media_name' : 'NULL'})`
-      : 'NULL';
+    const mediaNameParts = [];
+    if (hasMessageMedia && this.schema.hasColumn('message_media', 'media_name')) mediaNameParts.push('mm.media_name');
+    if (hasAddonMedia && this.schema.hasColumn('addon_message_media', 'media_name')) mediaNameParts.push('amm.media_name');
+    const mediaNameExpr = mediaNameParts.length > 1
+      ? `COALESCE(${mediaNameParts.join(', ')})`
+      : mediaNameParts[0] ?? 'NULL';
 
     const quotedExpr = hasQuoted
       ? '(SELECT text_data FROM message_quoted WHERE message_quoted.message_row_id = message._id LIMIT 1)'

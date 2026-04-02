@@ -4,21 +4,62 @@ import { UploadCloud } from 'lucide-react';
 interface DatabaseDropZoneProps {
   onFilePath: (filePath: string) => Promise<void>;
   onBrowse: () => Promise<void>;
+  onDropError?: (message: string) => void;
 }
+
+const normalizeFileUriPath = (uri: string): string | null => {
+  try {
+    const parsed = new URL(uri.trim());
+    if (parsed.protocol !== 'file:') {
+      return null;
+    }
+
+    let decodedPath = decodeURIComponent(parsed.pathname);
+
+    // Ajuste para paths do Windows no formato /C:/...
+    if (/^\/[A-Za-z]:\//.test(decodedPath)) {
+      decodedPath = decodedPath.slice(1);
+    }
+
+    return decodedPath;
+  } catch {
+    return null;
+  }
+};
 
 const getPathFromDrop = (event: React.DragEvent<HTMLDivElement>): string | null => {
   const file = event.dataTransfer.files?.[0] as File & { path?: string };
   if (!file) return null;
 
-  const rawPath = file.path;
-  if (!rawPath || typeof rawPath !== 'string') {
-    return null;
+  if (file.path && typeof file.path === 'string') {
+    return file.path;
   }
 
-  return rawPath;
+  const bridgePath = window.desktopAPI?.getPathForFile?.(file);
+  if (bridgePath) {
+    return bridgePath;
+  }
+
+  const uriList = event.dataTransfer.getData('text/uri-list');
+  if (uriList) {
+    const firstUri = uriList.split('\n').find((line) => line.trim() && !line.startsWith('#'));
+    if (firstUri) {
+      const normalized = normalizeFileUriPath(firstUri);
+      if (normalized) {
+        return normalized;
+      }
+    }
+  }
+
+  const plainText = event.dataTransfer.getData('text/plain');
+  if (plainText && plainText.startsWith('file://')) {
+    return normalizeFileUriPath(plainText);
+  }
+
+  return null;
 };
 
-export const DatabaseDropZone: React.FC<DatabaseDropZoneProps> = ({ onFilePath, onBrowse }) => {
+export const DatabaseDropZone: React.FC<DatabaseDropZoneProps> = ({ onFilePath, onBrowse, onDropError }) => {
   const [dragActive, setDragActive] = useState(false);
 
   const onDrop = useCallback(
@@ -28,12 +69,13 @@ export const DatabaseDropZone: React.FC<DatabaseDropZoneProps> = ({ onFilePath, 
 
       const filePath = getPathFromDrop(event);
       if (!filePath) {
+        onDropError?.('Nao foi possivel ler o caminho do arquivo arrastado. Tente usar "Selecionar arquivo".');
         return;
       }
 
       await onFilePath(filePath);
     },
-    [onFilePath]
+    [onDropError, onFilePath]
   );
 
   return (

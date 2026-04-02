@@ -6,6 +6,7 @@ declare global {
       getApiBaseUrl: () => Promise<string>;
       selectDbFile: () => Promise<string | null>;
       selectMediaFolder: () => Promise<string | null>;
+      getPathForFile?: (file: File) => string | null;
     };
   }
 }

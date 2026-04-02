@@ -42,6 +42,10 @@ const App: React.FC = () => {
           return message;
         }
 
+        if (/^(https?:\/\/|data:|blob:)/i.test(message.media_url)) {
+          return message;
+        }
+
         try {
           const fullUrl = await getMediaUrl(message.media_url);
           return {

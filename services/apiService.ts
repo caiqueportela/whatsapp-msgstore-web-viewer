@@ -106,6 +106,11 @@ export const getMessages = async (
 };
 
 export const getMediaUrl = async (relativeUrl: string): Promise<string> => {
+  const value = String(relativeUrl || '');
+  if (/^(https?:\/\/|data:|blob:)/i.test(value)) {
+    return value;
+  }
+
   const baseUrl = await getBaseUrl();
-  return `${baseUrl}${relativeUrl}`;
+  return `${baseUrl}${value}`;
 };

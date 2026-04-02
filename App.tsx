@@ -1,159 +1,175 @@
-import React, { useState, useEffect } from 'react';
-import { initDatabase, getConversations, getMessages } from './services/dbService';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ConversationList } from './components/ConversationList';
 import { ChatWindow } from './components/ChatWindow';
 import { Conversation, Message } from './types';
-import { Database, Upload, AlertCircle, Download, Key, Loader } from 'lucide-react';
-import { detectEncryptionType, extractKey, decryptDatabase, EncryptionType } from './services/encryptionService';
-import { KeyEntryModal } from './components/KeyEntryModal';
+import { Database, Upload, AlertCircle, Folder, RefreshCw } from 'lucide-react';
+import {
+  getConversations,
+  getMediaUrl,
+  getMessages,
+  openDatabase,
+  selectDbFile,
+  selectMediaFolder,
+} from './services/apiService';
+
+const CHAT_PAGE_SIZE = 250;
+const MESSAGE_PAGE_SIZE = 50;
 
 const App: React.FC = () => {
   const [dbLoaded, setDbLoaded] = useState(false);
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [conversationTotal, setConversationTotal] = useState(0);
   const [selectedChat, setSelectedChat] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [loadingConversations, setLoadingConversations] = useState(false);
   const [loadingMessages, setLoadingMessages] = useState(false);
+  const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
+  const [messageOffset, setMessageOffset] = useState(0);
+  const [messageTotal, setMessageTotal] = useState(0);
+  const [conversationSearch, setConversationSearch] = useState('');
+  const [messageSearch, setMessageSearch] = useState('');
+  const [dbPath, setDbPath] = useState<string | null>(null);
+  const [mediaRootPath, setMediaRootPath] = useState<string | null>(null);
 
-  // Encryption Support
-  const [pendingFile, setPendingFile] = useState<File | null>(null);
-  const [encryptionType, setEncryptionType] = useState<EncryptionType | null>(null);
-  const [showKeyModal, setShowKeyModal] = useState(false);
-  const [isDecrypting, setIsDecrypting] = useState(false);
-  const [progressStatus, setProgressStatus] = useState("Decrypting...");
+  const hasMoreMessages = useMemo(() => messages.length < messageTotal, [messages.length, messageTotal]);
 
-  // Settings
-  const [maxChats, setMaxChats] = useState(1000);
-  const [maxMessages, setMaxMessages] = useState(5000);
+  const hydrateMediaUrls = async (input: Message[]): Promise<Message[]> => {
+    const mapped = await Promise.all(
+      input.map(async (message) => {
+        if (!message.media_url) {
+          return message;
+        }
 
+        try {
+          const fullUrl = await getMediaUrl(message.media_url);
+          return {
+            ...message,
+            media_url: fullUrl,
+          };
+        } catch {
+          return message;
+        }
+      })
+    );
 
+    return mapped;
+  };
 
-  const processFile = async (file: File) => {
+  const fetchConversations = async (searchText: string) => {
+    setLoadingConversations(true);
+    try {
+      const response = await getConversations(CHAT_PAGE_SIZE, 0, searchText);
+      setConversations(response.data);
+      setConversationTotal(response.total);
+    } catch (err: any) {
+      setError(err.message || 'Falha ao carregar conversas.');
+    } finally {
+      setLoadingConversations(false);
+    }
+  };
+
+  const fetchMessages = async (chat: Conversation, searchText: string) => {
+    setLoadingMessages(true);
     setError(null);
-    setPendingFile(null);
-    setEncryptionType(null);
-    setShowKeyModal(false);
+    try {
+      const response = await getMessages(chat._id, MESSAGE_PAGE_SIZE, 0, searchText);
+      const hydrated = await hydrateMediaUrls(response.data);
+      setMessages(hydrated);
+      setMessageOffset(response.data.length);
+      setMessageTotal(response.total);
+    } catch (err: any) {
+      setError(err.message || 'Falha ao carregar mensagens.');
+    } finally {
+      setLoadingMessages(false);
+    }
+  };
+
+  const loadOlderMessages = async () => {
+    if (!selectedChat || loadingOlderMessages || loadingMessages || !hasMoreMessages) {
+      return;
+    }
+
+    setLoadingOlderMessages(true);
+    try {
+      const response = await getMessages(selectedChat._id, MESSAGE_PAGE_SIZE, messageOffset, messageSearch);
+      const hydrated = await hydrateMediaUrls(response.data);
+      setMessages((prev) => [...hydrated, ...prev]);
+      setMessageOffset((prev) => prev + response.data.length);
+      setMessageTotal(response.total);
+    } catch (err: any) {
+      setError(err.message || 'Falha ao carregar mensagens antigas.');
+    } finally {
+      setLoadingOlderMessages(false);
+    }
+  };
+
+  const handleOpenDatabase = async () => {
+    setError(null);
+    const selectedDbPath = await selectDbFile();
+    if (!selectedDbPath) {
+      return;
+    }
 
     try {
-      const buffer = await file.arrayBuffer();
-
-      // Check for encryption
-      const detectedType = detectEncryptionType(buffer, file.name);
-      if (detectedType) {
-        // console.log("Detected encryption:", detectedType);
-        setPendingFile(file);
-        setEncryptionType(detectedType);
-        setShowKeyModal(true);
-        return;
-      }
-
-      // If not encrypted, load directly
-      await initDatabase(buffer);
+      await openDatabase(selectedDbPath, mediaRootPath);
+      setDbPath(selectedDbPath);
       setDbLoaded(true);
-      loadChats(maxChats);
+      setSelectedChat(null);
+      setMessages([]);
+      await fetchConversations(conversationSearch);
     } catch (err: any) {
-      console.error(err);
-      setError("Failed to load database. Please ensure it is a valid msgstore.db file.");
+      setError(err.message || 'Não foi possível abrir o banco selecionado.');
       setDbLoaded(false);
     }
   };
 
-  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    await processFile(file);
-  };
+  const handleSelectMediaFolder = async () => {
+    const selectedPath = await selectMediaFolder();
+    if (!selectedPath) {
+      return;
+    }
 
+    setMediaRootPath(selectedPath);
 
-
-  const handleKeySubmit = async (keyInput: File | string) => {
-    if (!pendingFile || !encryptionType) return;
-
-    setIsDecrypting(true);
-    setError(null);
-
-    try {
-      // 1. Extract Key
-      let keyBuffer: ArrayBuffer;
-      if (typeof keyInput === 'string') {
-        // It's a hex string
-        keyBuffer = new TextEncoder().encode(keyInput).buffer;
-      } else {
-        keyBuffer = await keyInput.arrayBuffer();
+    if (dbPath) {
+      try {
+        await openDatabase(dbPath, selectedPath);
+      } catch (err: any) {
+        setError(err.message || 'Falha ao atualizar pasta de mídia.');
       }
-
-      const { cryptoKey, raw } = await extractKey(keyBuffer);
-
-      // 2. Decrypt Database
-      const dbBuffer = await pendingFile.arrayBuffer();
-      const decryptedBuffer = await decryptDatabase(
-        dbBuffer,
-        cryptoKey,
-        encryptionType,
-        raw,
-        (status) => setProgressStatus(status)
-      );
-
-      // 3. Init Database
-      setProgressStatus("Initializing Database...");
-      // Small timeout to allow UI to render the status change before main thread blocks again for init
-      await new Promise(r => setTimeout(r, 10));
-
-      await initDatabase(decryptedBuffer);
-      setDbLoaded(true);
-      loadChats(maxChats);
-
-      // Reset Modal State
-      setShowKeyModal(false);
-      setPendingFile(null);
-    } catch (err: any) {
-      console.error("Decryption/Load Error:", err);
-      setError(err.message || "Decryption failed. Please check your key file.");
-    } finally {
-      setIsDecrypting(false);
     }
   };
 
-  const cancelKeyEntry = () => {
-    setShowKeyModal(false);
-    setPendingFile(null);
-    setEncryptionType(null);
-    // Reset file input? 
-  };
-
-  const loadChats = (limit: number) => {
-    try {
-      const chats = getConversations(limit);
-      setConversations(chats);
-    } catch (err: any) {
-      setError(err.message);
-    }
-  };
-
-  const handleChatSelect = (chat: Conversation) => {
+  const handleChatSelect = async (chat: Conversation) => {
     setSelectedChat(chat);
-    setLoadingMessages(true);
-    // Small timeout to allow UI to render loading state
-    setTimeout(() => {
-      const msgs = getMessages(chat._id, maxMessages);
-      setMessages(msgs);
-      setLoadingMessages(false);
-    }, 10);
+    setMessageSearch('');
+    await fetchMessages(chat, '');
   };
 
-  // Reload chats if settings change and DB is loaded
   useEffect(() => {
-    if (dbLoaded) {
-      loadChats(maxChats);
+    if (!dbLoaded) {
+      return;
     }
-  }, [maxChats, dbLoaded]);
 
-  // Reload messages if settings change and chat is selected
+    const timer = setTimeout(() => {
+      fetchConversations(conversationSearch);
+    }, 250);
+
+    return () => clearTimeout(timer);
+  }, [conversationSearch, dbLoaded]);
+
   useEffect(() => {
-    if (dbLoaded && selectedChat) {
-      handleChatSelect(selectedChat);
+    if (!dbLoaded || !selectedChat) {
+      return;
     }
-  }, [maxMessages]);
+
+    const timer = setTimeout(() => {
+      fetchMessages(selectedChat, messageSearch);
+    }, 250);
+
+    return () => clearTimeout(timer);
+  }, [messageSearch, selectedChat?._id, dbLoaded]);
 
   if (!dbLoaded) {
     return (
@@ -164,35 +180,31 @@ const App: React.FC = () => {
           </div>
           <h1 className="text-2xl font-bold text-gray-800 mb-2">WhatsApp DB Viewer</h1>
           <p className="text-gray-500 mb-8">
-            Open your <code>msgstore.db</code> file to view chats, messages, and history in a clean interface.
-            <br /><span className="text-xs text-gray-400 mt-2 block">(No data is uploaded. Everything is processed locally in your browser.)</span>
+            Abra o seu arquivo <code>msgstore.db</code> para visualizar conversas e mensagens.
+            <br /><span className="text-xs text-gray-400 mt-2 block">Processamento local no app desktop.</span>
           </p>
 
-          <label className="block w-full cursor-pointer group">
+          <button
+            onClick={handleOpenDatabase}
+            className="block w-full cursor-pointer group"
+          >
             <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 hover:border-green-500 hover:bg-green-50 transition-all flex flex-col items-center">
               <Upload size={32} className="text-gray-400 group-hover:text-green-500 mb-2" />
               <span className="text-sm font-medium text-gray-600 group-hover:text-green-600">
-                Click to select msgstore.db
+                Selecionar msgstore.db
               </span>
             </div>
-            <input
-              type="file"
-              className="hidden"
-              accept=".db,application/vnd.sqlite3,.crypt12,.crypt14,.crypt15"
-              onChange={handleFileChange}
-            />
-          </label>
+          </button>
 
-          <div className="mt-6 pt-4 border-t border-gray-100">
-            <p className="text-sm text-gray-500 mb-2">Don't have a file?</p>
-            <a
-              href="https://github.com/trevordixon/whatsapp-msgstore-web-viewer/raw/refs/heads/main/msgstore.db"
-              className="inline-flex items-center text-sm text-green-600 hover:text-green-700 font-medium hover:underline"
-              download
+          <div className="mt-4">
+            <button
+              onClick={handleSelectMediaFolder}
+              className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-800"
             >
-              <Download size={16} className="mr-1.5" />
-              Download sample msgstore.db
-            </a>
+              <Folder size={16} />
+              Selecionar pasta de mídias (opcional)
+            </button>
+            {mediaRootPath && <p className="text-xs text-gray-500 mt-2 break-all">{mediaRootPath}</p>}
           </div>
 
           {error && (
@@ -202,28 +214,6 @@ const App: React.FC = () => {
             </div>
           )}
         </div>
-
-
-        {
-          showKeyModal && (
-            <KeyEntryModal
-              onKeySubmit={handleKeySubmit}
-              onCancel={cancelKeyEntry}
-              error={isDecrypting ? "Decrypting... Please wait." : error} // Simple reused error prop usage or separate status
-            />
-          )
-        }
-
-        {
-          isDecrypting && !showKeyModal && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-              <div className="bg-white p-6 rounded-xl flex items-center space-x-4">
-                <Loader className="animate-spin text-green-600" />
-                <span className="font-medium text-gray-700">{progressStatus}</span>
-              </div>
-            </div>
-          )
-        }
       </div >
     );
   }
@@ -234,33 +224,35 @@ const App: React.FC = () => {
       <div className="bg-white border-b border-gray-200 px-4 py-2 flex items-center justify-between shadow-sm z-20">
         <div className="flex items-center space-x-2 text-green-700 font-semibold">
           <Database size={18} />
-          <span>WA Viewer Pro</span>
+          <span>WA Viewer Pro Desktop</span>
         </div>
 
-        <div className="flex items-center space-x-4 text-xs">
-          <div className="flex items-center space-x-2">
-            <label className="text-gray-500">Max Chats:</label>
-            <input
-              type="number"
-              value={maxChats}
-              onChange={(e) => setMaxChats(Number(e.target.value))}
-              className="w-16 border rounded px-2 py-1 bg-gray-50 focus:ring-1 focus:ring-green-500 outline-none"
-            />
-          </div>
-          <div className="flex items-center space-x-2">
-            <label className="text-gray-500">Max Msgs:</label>
-            <input
-              type="number"
-              value={maxMessages}
-              onChange={(e) => setMaxMessages(Number(e.target.value))}
-              className="w-16 border rounded px-2 py-1 bg-gray-50 focus:ring-1 focus:ring-green-500 outline-none"
-            />
-          </div>
+        <div className="flex items-center space-x-3 text-xs">
           <button
-            onClick={() => setDbLoaded(false)}
+            onClick={async () => fetchConversations(conversationSearch)}
+            className="inline-flex items-center gap-1 px-2 py-1 rounded bg-gray-100 hover:bg-gray-200 text-gray-700"
+          >
+            <RefreshCw size={12} />
+            Atualizar
+          </button>
+          <button
+            onClick={handleSelectMediaFolder}
+            className="inline-flex items-center gap-1 px-2 py-1 rounded bg-gray-100 hover:bg-gray-200 text-gray-700"
+          >
+            <Folder size={12} />
+            Mídias
+          </button>
+          <button
+            onClick={() => {
+              setDbLoaded(false);
+              setSelectedChat(null);
+              setConversations([]);
+              setMessages([]);
+              setError(null);
+            }}
             className="text-red-500 hover:text-red-700 font-medium px-2"
           >
-            Close File
+            Fechar arquivo
           </button>
         </div>
       </div>
@@ -272,6 +264,10 @@ const App: React.FC = () => {
             conversations={conversations}
             selectedId={selectedChat?._id || null}
             onSelect={handleChatSelect}
+            searchTerm={conversationSearch}
+            onSearchTermChange={setConversationSearch}
+            total={conversationTotal}
+            loading={loadingConversations}
           />
         </div>
         <div className={`${!selectedChat ? 'hidden md:flex' : 'flex'} flex-1 h-full min-w-0 bg-[#efeae2] relative`}>
@@ -279,6 +275,11 @@ const App: React.FC = () => {
             conversation={selectedChat}
             messages={messages}
             loading={loadingMessages}
+            loadingOlder={loadingOlderMessages}
+            hasMore={hasMoreMessages}
+            onLoadOlder={loadOlderMessages}
+            messageSearchTerm={messageSearch}
+            onMessageSearchChange={setMessageSearch}
           />
           {/* Mobile Back Button Overlay */}
           {selectedChat && (

@@ -1,12 +1,17 @@
 import React, { useEffect, useRef } from 'react';
 import { Message, Conversation } from '../types';
 import { MessageBubble } from './MessageBubble';
-import { Phone, Video, Search, MoreVertical } from 'lucide-react';
+import { Search, MoreVertical } from 'lucide-react';
 
 interface ChatWindowProps {
   messages: Message[];
   conversation: Conversation | null;
   loading: boolean;
+  loadingOlder: boolean;
+  hasMore: boolean;
+  onLoadOlder: () => void;
+  messageSearchTerm: string;
+  onMessageSearchChange: (value: string) => void;
 }
 
 // Helper to group messages by date
@@ -14,7 +19,7 @@ const groupMessagesByDate = (messages: Message[]) => {
   const groups: { [key: string]: Message[] } = {};
   
   messages.forEach((msg) => {
-    const dateStr = msg.timestamp.toLocaleDateString(undefined, {
+    const dateStr = new Date(msg.timestamp).toLocaleDateString(undefined, {
       year: 'numeric',
       month: 'long',
       day: 'numeric',
@@ -28,13 +33,34 @@ const groupMessagesByDate = (messages: Message[]) => {
   return groups;
 };
 
-export const ChatWindow: React.FC<ChatWindowProps> = ({ messages, conversation, loading }) => {
+export const ChatWindow: React.FC<ChatWindowProps> = ({
+  messages,
+  conversation,
+  loading,
+  loadingOlder,
+  hasMore,
+  onLoadOlder,
+  messageSearchTerm,
+  onMessageSearchChange,
+}) => {
   const bottomRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   // Auto scroll to bottom when messages change
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'auto' });
-  }, [messages]);
+  }, [conversation?._id, loading]);
+
+  const handleScroll = () => {
+    const element = scrollContainerRef.current;
+    if (!element || loadingOlder || !hasMore) {
+      return;
+    }
+
+    if (element.scrollTop < 160) {
+      onLoadOlder();
+    }
+  };
 
   if (!conversation) {
     return (
@@ -44,8 +70,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ messages, conversation, 
         </div>
         <h2 className="text-2xl font-light text-gray-700 mb-2">WhatsApp Viewer</h2>
         <p className="text-gray-500 max-w-md">
-          Select a conversation from the sidebar to view its history. 
-          Your database is processed locally in your browser.
+          Selecione uma conversa na barra lateral para visualizar o histórico.
         </p>
       </div>
     );
@@ -74,7 +99,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ messages, conversation, 
           </div>
           <div className="min-w-0 flex-1">
             <h2 className="font-semibold text-gray-800 text-sm md:text-base truncate">
-              {conversation.subject || conversation.jid}
+              {conversation.display_name || conversation.subject || conversation.jid}
             </h2>
             <p className="text-xs text-gray-500 truncate">
               {conversation.jid}
@@ -82,19 +107,42 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ messages, conversation, 
           </div>
         </div>
         <div className="flex items-center space-x-4 text-gray-500 flex-shrink-0">
-            <Search size={20} className="cursor-not-allowed opacity-50" />
-            <MoreVertical size={20} className="cursor-not-allowed opacity-50" />
+            <MoreVertical size={20} className="opacity-60" />
+        </div>
+      </div>
+
+      <div className="bg-[#f0f2f5] px-4 pb-3 pt-2 border-b border-gray-200 z-10">
+        <div className="relative max-w-md">
+          <input
+            type="text"
+            value={messageSearchTerm}
+            onChange={(e) => onMessageSearchChange(e.target.value)}
+            placeholder="Buscar nesta conversa"
+            className="w-full bg-white rounded-lg border border-gray-300 pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+          />
+          <Search size={16} className="absolute left-3 top-2.5 text-gray-500" />
         </div>
       </div>
 
       {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto p-4 z-0 md:px-12 lg:px-24 w-full">
+      <div
+        ref={scrollContainerRef}
+        onScroll={handleScroll}
+        className="flex-1 overflow-y-auto p-4 z-0 md:px-12 lg:px-24 w-full"
+      >
         {loading ? (
             <div className="flex justify-center items-center h-full">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-500"></div>
             </div>
         ) : (
             <>
+                {loadingOlder && (
+                  <div className="flex justify-center py-2">
+                    <span className="text-xs bg-white/90 px-3 py-1 rounded-full text-gray-500 border border-gray-200">
+                      Carregando mensagens antigas...
+                    </span>
+                  </div>
+                )}
                 {Object.entries(messageGroups).map(([date, msgs]) => (
                     <div key={date}>
                         <div className="flex justify-center mb-4 sticky top-2 z-10">
@@ -118,7 +166,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ messages, conversation, 
             <span className="text-2xl">😊</span>
         </div>
         <div className="flex-1 bg-white rounded-lg px-4 py-3 text-sm text-gray-400 border border-gray-200 italic shadow-sm truncate">
-            You are viewing a read-only archive
+          Visualização somente leitura
         </div>
         <div className="p-2 text-gray-500 flex-shrink-0">
             <span className="text-xl">🎤</span>

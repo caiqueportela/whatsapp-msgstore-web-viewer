@@ -1,6 +1,6 @@
 import React from 'react';
 import { Message } from '../types';
-import { Check, Image as ImageIcon } from 'lucide-react';
+import { Check, File, Image as ImageIcon, Video } from 'lucide-react';
 
 interface MessageBubbleProps {
   message: Message;
@@ -9,9 +9,12 @@ interface MessageBubbleProps {
 export const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
   const isSent = message.from_me;
 
-  const formatTime = (date: Date) => {
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const formatTime = (timestamp: number) => {
+    return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
+
+  const isImage = message.media_mime_type?.startsWith('image/');
+  const isVideo = message.media_mime_type?.startsWith('video/');
 
   return (
     <div className={`flex flex-col ${isSent ? 'items-end' : 'items-start'} mb-2 group w-full`}>
@@ -43,6 +46,12 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
           </div>
         )}
 
+        {!isSent && message.sender_name && (
+          <div className="px-1 text-[11px] font-semibold text-emerald-700 mb-0.5 truncate">
+            {message.sender_name}
+          </div>
+        )}
+
         {/* Content */}
         <div className="text-gray-900 px-1 leading-relaxed whitespace-pre-wrap break-words min-w-0 w-full" style={{ wordBreak: 'break-word' }}>
           {message.text_data ? (
@@ -50,10 +59,38 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
           ) : (
             <div className="flex items-center text-gray-500 italic py-1">
               <ImageIcon size={16} className="mr-2" />
-              <span>Media omitted</span>
+              <span>Mídia</span>
             </div>
           )}
         </div>
+
+        {message.media_url && (
+          <div className="mt-2 px-1">
+            {isImage ? (
+              <a href={message.media_url} target="_blank" rel="noreferrer">
+                <img
+                  src={message.media_url}
+                  alt="Mídia"
+                  className="rounded-lg max-h-72 object-cover border border-black/10"
+                />
+              </a>
+            ) : isVideo ? (
+              <video controls className="rounded-lg max-h-72 border border-black/10 bg-black/80">
+                <source src={message.media_url} type={message.media_mime_type || undefined} />
+              </video>
+            ) : (
+              <a
+                href={message.media_url}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-2 text-xs text-blue-700 hover:underline"
+              >
+                <File size={14} />
+                Abrir arquivo
+              </a>
+            )}
+          </div>
+        )}
 
         {/* Metadata */}
         <div className="flex items-center justify-end mt-1 space-x-1 select-none">

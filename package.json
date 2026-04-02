@@ -1,28 +1,71 @@
 {
   "name": "wa-viewer-pro",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
+  "description": "Visualizador desktop de msgstore.db do WhatsApp com backend local Electron.",
+  "author": {
+    "name": "WA Viewer Team",
+    "email": "support@waviewer.local"
+  },
   "type": "module",
+  "main": "electron/main.cjs",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
+    "dev:web": "vite",
+    "dev:electron": "wait-on tcp:5173 && electron .",
+    "dev": "concurrently -k \"npm:dev:web\" \"npm:dev:electron\"",
+    "build:web": "vite build",
+    "build": "npm run build:web && electron-builder",
+    "preview": "vite preview",
+    "postinstall": "electron-builder install-app-deps"
   },
   "dependencies": {
-    "@types/node-forge": "^1.3.14",
-    "@types/pako": "^2.0.4",
-    "@vitejs/plugin-react": "^5.1.1",
-    "lucide-react": "^0.555.0",
-    "node-forge": "^1.3.3",
-    "pako": "^2.1.0",
-    "react": "^19.2.1",
-    "react-dom": "^19.2.1",
-    "vite": "^7.2.6"
+    "better-sqlite3": "^11.8.1",
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
+    "lucide-react": "^1.7.0",
+    "mime-types": "^2.1.35",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4"
   },
   "devDependencies": {
-    "@types/node": "^22.14.0",
-    "@vitejs/plugin-react": "^5.0.0",
-    "typescript": "~5.8.2",
-    "vite": "^6.2.0"
+    "@types/node": "^25.5.0",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "@vitejs/plugin-react": "^6.0.1",
+    "concurrently": "^9.2.1",
+    "electron": "^36.5.0",
+    "electron-builder": "^26.0.12",
+    "typescript": "^5.9.3",
+    "vite": "^8.0.3",
+    "wait-on": "^9.0.1"
+  },
+  "build": {
+    "appId": "com.waviewer.desktop",
+    "productName": "WA Viewer Pro",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Utility",
+      "maintainer": "WA Viewer Team <support@waviewer.local>"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
   }
 }

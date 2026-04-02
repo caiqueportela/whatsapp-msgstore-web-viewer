@@ -1,82 +1,82 @@
-# WhatsApp Msgstore Web Viewer
+# WA Viewer Pro Desktop
 
-A modern, high-performance web viewer for WhatsApp `msgstore.db` (and `msgstore.db.crypt15`) files.
+Aplicativo desktop (Electron) para abrir e consultar `msgstore.db` do WhatsApp com backend local.
 
-[![Live Demo](https://img.shields.io/badge/Live%20Demo-Open%20App-25D366?style=for-the-badge&logo=whatsapp&logoColor=white)](https://trevordixon.github.io/whatsapp-msgstore-web-viewer/)
+## O que mudou
 
-[Download the sample msgstore.db](https://github.com/trevordixon/whatsapp-msgstore-web-viewer/raw/refs/heads/main/msgstore.db) from this repository to test.
+- Migração de app web puro para app desktop Electron.
+- Backend local em Node.js (dentro do Electron) com API HTTP para consultas.
+- Remoção do suporte a arquivos criptografados (`.crypt12`, `.crypt14`, `.crypt15`).
+- Paginação de mensagens com scroll infinito (carrega mais ao rolar para cima).
+- Busca de mensagens dentro da conversa.
+- Tentativa de resolução de nome de contato e remetente de grupos (via tabelas `jid` e `wa_contacts`).
+- Tentativa de exibição de mídias quando houver referência no banco e arquivo físico acessível.
 
-## Privacy First
+## Requisitos
 
-**Your data never leaves your computer.** 
+- Node.js 20+
+- npm 10+
 
-This application runs entirely in your browser. The database file is processed locally using WebAssembly (SQL.js). No data is uploaded to any server, ensuring your conversations remain private.
+## Executando em desenvolvimento
 
-## Features
+```bash
+npm install
+npm run dev
+```
 
-*   **Modern UI:** A clean interface inspired by WhatsApp Web.
-*   **Fast & Local:** instant loading and querying of SQLite databases directly in the browser.
-*   **Search:** Filter conversations by contact name or phone number.
-*   **Date Grouping:** Messages are intuitively grouped by "Today", "Yesterday", and specific dates.
-*   **Responsive:** Works on desktop and mobile.
+Isso sobe:
 
-## How to Use
+- Frontend Vite em `http://localhost:5173`
+- Janela Electron apontando para esse frontend
+- Backend local (porta dinâmica em localhost)
 
-1.  **Obtain your database:** You need a `msgstore.db` file (encrypted or unencrypted).
-    *   *Note: Standard backups found in Android/WhatsApp/Databases are usually encrypted (e.g., `msgstore.db.crypt14`).*
-2.  **Open the App:** Go to the [Live Demo](https://trevordixon.github.io/whatsapp-msgstore-web-viewer/).
-3.  **Upload:** Click the upload box and select your `.db` file.
-4.  **Browse:** Select a chat from the sidebar to view history.
+## Build de executáveis
 
-## Encrypted Databases (New!)
+Build padrão no Linux (gera AppImage e .deb):
 
-We now support opening encrypted WhatsApp databases directly.
+```bash
+npm run build
+```
 
-*   **Supported Formats:** `.crypt15` (Verified), `.crypt14`, `.crypt12`
-*   **Requirements:**
-    1.  The encrypted file (e.g., `msgstore.db.crypt15`)
-    2.  The decryption key (e.g., `encrypted_backup.key`) **OR** your 64-character hex recovery key.
-*   **Where to find the key:** 
-    *   **Rooted Android:** `/data/data/com.whatsapp/files/key`
-    *   **E2E-Encrypted Backups:** Use your 64-digit hex key.
-*   **How to use:** Upload your `.crypt15` file, and when prompted, simply drag & drop your key file or paste the hex string.
+Artefatos em `release/`.
 
-> **Note:** Decryption is typically verified on `crypt15` files. Older formats may work but are heuristic-based.
+Para gerar instalador Windows (`.exe`/NSIS), execute em um ambiente Windows:
 
+```bash
+npm run build -- --win
+```
 
-## Screenshots
+Para Linux:
 
-<p align="center">
-  <img src="https://github.com/user-attachments/assets/a2f878a2-e34d-47da-8a34-54f9b48b073a" alt="Landing Page" width="45%">
-  &nbsp; &nbsp;
-  <img src="https://github.com/user-attachments/assets/685b372c-985e-4e68-8063-3cd5d465dd2b" alt="Chat View" width="45%">
-</p>
+```bash
+npm run build -- --linux
+```
 
-## Running Locally
+## Uso no app
 
-Pull requests are welcome! If you want to contribute or run this on your own machine:
+1. Clique em "Selecionar msgstore.db".
+2. (Opcional) Clique em "Selecionar pasta de mídias" e escolha a pasta que contém diretórios como `WhatsApp Images`, `WhatsApp Video`, etc.
+3. Selecione uma conversa.
+4. Role para cima para carregar mensagens antigas.
+5. Use a busca no topo do chat para filtrar mensagens daquela conversa.
 
-1.  **Clone the repository**
-    ```bash
-    git clone https://github.com/trevordixon/whatsapp-msgstore-web-viewer.git
-    cd whatsapp-msgstore-web-viewer
-    ```
+## Limitações atuais
 
-2.  **Install dependencies**
-    ```bash
-    npm install
-    ```
+- Apenas bancos SQLite não criptografados.
+- Nomes de contato/remetente dependem da estrutura e qualidade de dados em `wa_contacts`.
+- Exibição de mídia depende de correspondência entre caminhos da tabela e arquivos no disco.
 
-3.  **Start the dev server**
-    ```bash
-    npm run dev
-    ```
+## Como extrair estrutura de um DB grande (ex.: 500MB)
 
-4.  **Build for production**
-    ```bash
-    npm run build
-    ```
+Para analisar schema e amostras de tabelas, rode:
 
-## License
+```bash
+node scripts/export-db-introspection.cjs "/caminho/msgstore.db" "./introspection-output"
+```
 
-Open source. Feel free to fork and improve!
+Arquivos gerados:
+
+- `introspection-output/schema.sql`
+- `introspection-output/tables.json`
+
+Com isso é possível mapear melhor tabelas extras do seu dump real e melhorar consultas (nomes, mídia, status, etc.).
